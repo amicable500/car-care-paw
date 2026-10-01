@@ -1,0 +1,1747 @@
+<!DOCTYPE html>
+<html lang="ja" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DriveCare PWA - 車両メンテナンスノート</title>
+  
+  <!-- CDN Dependencies -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eff6ff',
+              100: '#dbeafe',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+              900: '#1e3a8a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #1e293b; }
+    ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+    .glass-card {
+      background: rgba(30, 41, 59, 0.75);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .nav-tab.active {
+      background-color: #2563eb;
+      color: #ffffff;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+    }
+  </style>
+</head>
+<body class="min-h-screen pb-20 md:pb-6 flex flex-col">
+
+  <!-- Top Application Header -->
+  <header class="sticky top-0 z-30 glass-card border-b border-slate-800 bg-slate-900/90 backdrop-blur-md px-4 py-3">
+    <div class="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-3">
+      
+      <!-- Brand & Active Vehicle Switcher -->
+      <div class="flex items-center justify-between md:justify-start gap-4">
+        <div class="flex items-center space-x-3">
+          <div class="p-2.5 bg-gradient-to-tr from-blue-600 to-indigo-500 rounded-xl shadow-lg shadow-blue-500/20 text-white">
+            <i class="fa-solid fa-car-wrench text-xl"></i>
+          </div>
+          <div>
+            <h1 class="text-lg font-bold text-white tracking-wide leading-none flex items-center gap-2">
+              DriveCare <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">PWA Pro</span>
+            </h1>
+            <p class="text-[11px] text-slate-400 mt-1">マルチ車両メンテ＆適合パーツ検索ノート</p>
+          </div>
+        </div>
+
+        <!-- Vehicle Selector Dropdown -->
+        <div class="flex items-center gap-2">
+          <select id="vehicleSelect" onchange="switchActiveVehicle(this.value)" class="bg-slate-800 border border-slate-700 text-xs font-bold text-blue-300 py-1.5 px-3 rounded-xl focus:outline-none focus:border-blue-500">
+            <!-- Dynamic Vehicles Options -->
+          </select>
+          <button onclick="openVehicleModal()" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg text-xs" title="車両の追加・編集">
+            <i class="fa-solid fa-plus text-blue-400"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Odometer & Notification Buttons -->
+      <div class="flex items-center justify-end space-x-2">
+        <button onclick="openOdoModal()" class="px-3 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl transition-all flex items-center gap-1.5">
+          <i class="fa-solid fa-gauge text-blue-400"></i>
+          <span>距離更新: <strong id="headerOdoDisplay" class="text-blue-300 font-mono">0</strong> km</span>
+        </button>
+
+        <button id="notifyPermissionBtn" onclick="requestNotificationPermission()" class="p-2 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-xl transition-all relative" title="ブラウザ通知の設定">
+          <i id="notifyIcon" class="fa-solid fa-bell text-slate-400"></i>
+          <span id="notifyBadge" class="hidden absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-500 rounded-full"></span>
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- Active Vehicle Model Code & Quick Spare Parts Search Banner -->
+  <div class="bg-slate-900 border-b border-slate-800/80 px-4 py-2.5">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+      <div class="flex items-center gap-2">
+        <span class="px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 font-mono font-semibold border border-blue-500/20" id="bannerCarModelCode">型式: 未登録</span>
+        <span id="bannerCarTitle" class="font-bold text-slate-200">選択中車両</span>
+        <span class="text-slate-400 text-[11px]">(年式: <span id="bannerCarYear">2020</span>年)</span>
+      </div>
+
+      <!-- Dynamic EC Part Search Links (Amazon & MonotaRO) -->
+      <div class="flex items-center gap-2 flex-wrap" id="partsSearchButtonsContainer">
+        <span class="text-slate-400 text-[11px]"><i class="fa-solid fa-magnifying-glass text-amber-400"></i> 適合パーツ一発検索:</span>
+        <a id="amazonSearchLink" href="#" target="_blank" rel="noopener noreferrer" class="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg font-medium text-[11px] transition-all flex items-center gap-1">
+          <i class="fa-brands fa-amazon"></i> Amazon適合品
+        </a>
+        <a id="monotaroSearchLink" href="#" target="_blank" rel="noopener noreferrer" class="px-2.5 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/30 rounded-lg font-medium text-[11px] transition-all flex items-center gap-1">
+          <i class="fa-solid fa-store"></i> モノタロウ適合品
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 py-6 space-y-6">
+
+    <!-- Navigation Tabs -->
+    <div class="flex items-center bg-slate-900 p-1.5 rounded-xl border border-slate-800 overflow-x-auto no-scrollbar space-x-1">
+      <button onclick="switchTab('dashboard')" id="tab-dashboard" class="nav-tab active flex-1 py-2 px-4 text-xs sm:text-sm font-medium rounded-lg transition-all whitespace-nowrap text-center flex items-center justify-center gap-2">
+        <i class="fa-solid fa-chart-pie"></i>
+        <span>ダッシュボード</span>
+      </button>
+      <button onclick="switchTab('logs')" id="tab-logs" class="nav-tab flex-1 py-2 px-4 text-xs sm:text-sm font-medium rounded-lg transition-all text-slate-400 hover:text-slate-200 whitespace-nowrap text-center flex items-center justify-center gap-2">
+        <i class="fa-solid fa-clipboard-list"></i>
+        <span>整備履歴 (CRUD)</span>
+      </button>
+      <button onclick="switchTab('reminders')" id="tab-reminders" class="nav-tab flex-1 py-2 px-4 text-xs sm:text-sm font-medium rounded-lg transition-all text-slate-400 hover:text-slate-200 whitespace-nowrap text-center flex items-center justify-center gap-2 relative">
+        <i class="fa-solid fa-clock-rotate-left"></i>
+        <span>リマインド設定</span>
+        <span id="reminderAlertBadge" class="hidden px-1.5 py-0.5 text-[10px] bg-red-500 text-white font-bold rounded-full">0</span>
+      </button>
+      <button onclick="switchTab('backtest')" id="tab-backtest" class="nav-tab flex-1 py-2 px-4 text-xs sm:text-sm font-medium rounded-lg transition-all text-slate-400 hover:text-slate-200 whitespace-nowrap text-center flex items-center justify-center gap-2 relative">
+        <i class="fa-solid fa-wand-magic-sparkles"></i>
+        <span>バックテスト & AI解析</span>
+        <span id="feedbackMissingBadge" class="hidden px-1.5 py-0.5 text-[10px] bg-amber-500 text-slate-950 font-extrabold rounded-full">!</span>
+      </button>
+      <button onclick="switchTab('parts')" id="tab-parts" class="nav-tab flex-1 py-2 px-4 text-xs sm:text-sm font-medium rounded-lg transition-all text-slate-400 hover:text-slate-200 whitespace-nowrap text-center flex items-center justify-center gap-2">
+        <i class="fa-solid fa-boxes-packing"></i>
+        <span>適合パーツ一発検索ハブ</span>
+      </button>
+      <button onclick="switchTab('settings')" id="tab-settings" class="nav-tab flex-1 py-2 px-4 text-xs sm:text-sm font-medium rounded-lg transition-all text-slate-400 hover:text-slate-200 whitespace-nowrap text-center flex items-center justify-center gap-2">
+        <i class="fa-solid fa-sliders"></i>
+        <span>車両・システム管理</span>
+      </button>
+    </div>
+
+    <!-- TAB 1: DASHBOARD -->
+    <section id="view-dashboard" class="tab-content space-y-6">
+      
+      <!-- Statistics Summary Cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="glass-card p-4 rounded-2xl border-l-4 border-l-blue-500">
+          <p class="text-xs text-slate-400 font-medium">現在の総走行距離</p>
+          <div class="flex items-baseline justify-between mt-1">
+            <h3 id="dashOdometer" class="text-2xl font-bold text-white">0 <span class="text-sm font-normal text-slate-400">km</span></h3>
+            <span class="text-[11px] text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20"><i class="fa-solid fa-car"></i> 選択車両</span>
+          </div>
+        </div>
+
+        <div class="glass-card p-4 rounded-2xl border-l-4 border-l-emerald-500">
+          <p class="text-xs text-slate-400 font-medium">車両累計維持費 (選択中)</p>
+          <div class="flex items-baseline justify-between mt-1">
+            <h3 id="dashTotalCost" class="text-2xl font-bold text-emerald-400">¥0</h3>
+            <span class="text-xs text-slate-400"><span id="dashLogCount">0</span> 件の記録</span>
+          </div>
+        </div>
+
+        <div class="glass-card p-4 rounded-2xl border-l-4 border-l-amber-500">
+          <p class="text-xs text-slate-400 font-medium">要対応リマインダー</p>
+          <div class="flex items-baseline justify-between mt-1">
+            <h3 id="dashAlertCount" class="text-2xl font-bold text-amber-400">0 件</h3>
+            <span id="dashAlertSubtext" class="text-xs text-amber-300 font-medium bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">状態良好</span>
+          </div>
+        </div>
+
+        <div class="glass-card p-4 rounded-2xl border-l-4 border-l-purple-500">
+          <p class="text-xs text-slate-400 font-medium">年間推計維持コスト</p>
+          <div class="flex items-baseline justify-between mt-1">
+            <h3 id="dashAnnualCost" class="text-2xl font-bold text-purple-300">¥0 <span class="text-xs text-slate-400 font-normal">/年</span></h3>
+            <span class="text-xs text-purple-400"><i class="fa-solid fa-chart-line"></i> 推定値</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Urgent Reminder Alert Banner -->
+      <div id="urgentReminderBanner" class="hidden glass-card p-4 rounded-2xl border border-amber-500/40 bg-gradient-to-r from-amber-500/10 via-slate-900 to-slate-900">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div class="flex items-start gap-3">
+            <div class="p-3 bg-amber-500/20 text-amber-400 rounded-xl mt-0.5">
+              <i class="fa-solid fa-triangle-exclamation text-xl"></i>
+            </div>
+            <div>
+              <h4 class="font-bold text-amber-200 text-sm sm:text-base flex items-center gap-2">
+                整備時期が近づいている（または超過した）項目があります
+              </h4>
+              <p id="urgentReminderDetail" class="text-xs text-slate-300 mt-1">
+                リマインド設定を確認してください。
+              </p>
+            </div>
+          </div>
+          <button onclick="switchTab('reminders')" class="px-4 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl shadow-lg transition-all shrink-0">
+            リマインド一覧を確認
+          </button>
+        </div>
+      </div>
+
+      <!-- Charts Section -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="glass-card p-5 rounded-2xl flex flex-col justify-between">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-semibold text-slate-200 flex items-center gap-2 text-sm">
+              <i class="fa-solid fa-chart-pie text-blue-400"></i> カテゴリ別維持費割合
+            </h3>
+            <span class="text-xs text-slate-400">通算集計</span>
+          </div>
+          <div class="relative h-64 flex items-center justify-center">
+            <canvas id="categoryChart"></canvas>
+          </div>
+        </div>
+
+        <div class="glass-card p-5 rounded-2xl flex flex-col justify-between">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-semibold text-slate-200 flex items-center gap-2 text-sm">
+              <i class="fa-solid fa-chart-column text-emerald-400"></i> 直近の月別整備費用推移
+            </h3>
+            <span class="text-xs text-slate-400">月次比較</span>
+          </div>
+          <div class="relative h-64">
+            <canvas id="monthlyChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Maintenance Logs Table Brief -->
+      <div class="glass-card p-5 rounded-2xl space-y-4">
+        <div class="flex items-center justify-between">
+          <h3 class="font-semibold text-slate-200 flex items-center gap-2 text-sm">
+            <i class="fa-solid fa-clock-rotate-left text-blue-400"></i> 直近の整備履歴
+          </h3>
+          <button onclick="switchTab('logs')" class="text-xs text-blue-400 hover:text-blue-300 font-medium flex items-center gap-1">
+            すべて表示 <i class="fa-solid fa-arrow-right text-[10px]"></i>
+          </button>
+        </div>
+        
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-800/60 text-slate-400 uppercase text-[10px]">
+              <tr>
+                <th class="p-3 rounded-l-lg">日付</th>
+                <th class="p-3">整備項目 / カテゴリ</th>
+                <th class="p-3">整備時距離</th>
+                <th class="p-3 text-right">費用</th>
+                <th class="p-3 rounded-r-lg text-center">メモ</th>
+              </tr>
+            </thead>
+            <tbody id="dashRecentLogsTable" class="divide-y divide-slate-800/50">
+              <!-- JS Dynamic insertion -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- TAB 2: MAINTENANCE LOGS (CRUD) -->
+    <section id="view-logs" class="tab-content hidden space-y-6">
+      
+      <!-- Actions Bar -->
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+        <div class="flex items-center space-x-2 flex-1 max-w-md">
+          <div class="relative w-full">
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+            <input type="text" id="logSearchInput" oninput="renderLogsTable()" placeholder="整備名やメモで検索..." class="w-full pl-9 pr-4 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-blue-500">
+          </div>
+          <select id="logCategoryFilter" onchange="renderLogsTable()" class="bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-200 px-3 py-2 focus:outline-none focus:border-blue-500">
+            <option value="ALL">すべてのカテゴリ</option>
+            <option value="オイル・液類">オイル・液類</option>
+            <option value="タイヤ・ホイール">タイヤ・ホイール</option>
+            <option value="ブレーキ関連">ブレーキ関連</option>
+            <option value="点検・車検">点検・車検</option>
+            <option value="消耗品・パーツ">消耗品・パーツ</option>
+            <option value="その他">その他</option>
+          </select>
+        </div>
+
+        <button onclick="openLogModal()" class="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs rounded-xl shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2 transition-all">
+          <i class="fa-solid fa-plus"></i>
+          <span>整備記録を新規登録</span>
+        </button>
+      </div>
+
+      <!-- Full Logs Table -->
+      <div class="glass-card rounded-2xl overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-800 text-slate-400 font-semibold uppercase text-[10px] tracking-wider">
+              <tr>
+                <th class="p-4">実施日付</th>
+                <th class="p-4">カテゴリ</th>
+                <th class="p-4">整備名・内容</th>
+                <th class="p-4">整備時距離</th>
+                <th class="p-4 text-right">費用(税込)</th>
+                <th class="p-4">メモ</th>
+                <th class="p-4 text-center">操作</th>
+              </tr>
+            </thead>
+            <tbody id="fullLogsTableBody" class="divide-y divide-slate-800/60">
+              <!-- Dynamic Rows -->
+            </tbody>
+          </table>
+        </div>
+        <div id="logsEmptyState" class="hidden p-8 text-center text-slate-500">
+          <i class="fa-solid fa-folder-open text-3xl mb-2 text-slate-600"></i>
+          <p class="text-sm">該当する整備記録がありません。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: REMINDER SETTINGS -->
+    <section id="view-reminders" class="tab-content hidden space-y-6">
+      
+      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-base font-bold text-slate-100 flex items-center gap-2">
+            <i class="fa-solid fa-bell text-blue-400"></i> 部品別リマインダー設定 (通知連携)
+          </h2>
+          <p class="text-xs text-slate-400 mt-0.5">走行距離（km）または経過期間（ヶ月）のどちらか早い方で自動判定し、ブラウザ通知を送ります。</p>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button onclick="testNotificationModal()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium rounded-xl transition-all flex items-center gap-1.5">
+            <i class="fa-solid fa-paper-plane text-blue-400"></i>
+            <span>通知テスト</span>
+          </button>
+          <button onclick="openReminderModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs rounded-xl shadow-lg shadow-blue-600/30 transition-all flex items-center gap-2">
+            <i class="fa-solid fa-plus"></i>
+            <span>リマインド追加</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Reminder Cards Grid -->
+      <div id="reminderCardsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- JS Dynamic Cards -->
+      </div>
+    </section>
+
+    <!-- TAB 4: BACKTEST & FEEDBACK -->
+    <section id="view-backtest" class="tab-content hidden space-y-6">
+      
+      <div class="glass-card p-5 rounded-2xl border-l-4 border-l-indigo-500">
+        <div class="flex items-start justify-between">
+          <div>
+            <h2 class="text-base font-bold text-white flex items-center gap-2">
+              <i class="fa-solid fa-wand-magic-sparkles text-indigo-400"></i> 過去ログ分析 & 不足リマインド自動抽出
+            </h2>
+            <p class="text-xs text-slate-300 mt-1 leading-relaxed">
+              整備履歴と現在の走行ペースから設定インターバルの妥当性を分析します。
+              また、過去ログにあるがリマインド未設定の項目を**「不足項目」**として自動抽出し、1クリックでリマインドに追加できます。
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Missing Reminders Auto Feedback Section -->
+      <div class="glass-card p-5 rounded-2xl border border-amber-500/30 bg-slate-900/80 space-y-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-2">
+            <span class="flex h-3 w-3 relative">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+            </span>
+            <h3 class="font-bold text-amber-300 text-sm">
+              自動フィードバック: リマインド未設定の過去整備項目
+            </h3>
+          </div>
+          <span id="missingCountBadge" class="px-2 py-0.5 text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full">0件検出</span>
+        </div>
+
+        <p class="text-xs text-slate-300">
+          整備履歴には登録されていますが、リマインド条件が未設定の項目です。ボタンを押すと実績の最終実施距離・日付を引き継ぎ、最適なリマインドを追加・更新します。
+        </p>
+
+        <!-- Dynamic Container for Missing Items -->
+        <div id="missingRemindersList" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <!-- Dynamic Items -->
+        </div>
+      </div>
+
+      <!-- Backtest Cycle Analysis Table -->
+      <div class="glass-card p-5 rounded-2xl space-y-4">
+        <h3 class="font-semibold text-slate-200 text-sm flex items-center gap-2">
+          <i class="fa-solid fa-sliders text-blue-400"></i> リマインド周期設定の妥当性評価（バックテスト結果）
+        </h3>
+        
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-800 text-slate-400 uppercase text-[10px]">
+              <tr>
+                <th class="p-3">整備項目</th>
+                <th class="p-3">過去平均実績サイクル</th>
+                <th class="p-3">現在の設定インターバル</th>
+                <th class="p-3">評価・診断</th>
+                <th class="p-3 text-right">推奨アドバイス</th>
+              </tr>
+            </thead>
+            <tbody id="backtestTableBody" class="divide-y divide-slate-800/60">
+              <!-- Dynamic Rows -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- TAB 5: SPARE PARTS QUICK SEARCH HUB -->
+    <section id="view-parts" class="tab-content hidden space-y-6">
+      <div class="glass-card p-5 rounded-2xl space-y-4">
+        <div>
+          <h2 class="text-base font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-boxes-packing text-amber-400"></i> 登録型式による適合パーツ一発検索ハブ
+          </h2>
+          <p class="text-xs text-slate-400 mt-1">
+            選択中の車両型式「<strong id="partsHubModelCode" class="text-blue-400 font-mono">未登録</strong>」を使って、Amazonおよびモノタロウから適合パーツをダイレクト検索します。未登録の型式であっても即時検索可能です。
+          </p>
+        </div>
+
+        <!-- Custom Search Term Form -->
+        <div class="p-4 bg-slate-900/80 rounded-xl border border-slate-800 flex flex-col sm:flex-row items-center gap-3">
+          <div class="w-full sm:w-auto font-bold text-xs text-slate-300">カスタム品目検索:</div>
+          <input type="text" id="customPartKeyword" placeholder="例: エアコンフィルター, バッテリー, ブレーキパッド" class="flex-1 w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-blue-500">
+          <div class="flex items-center gap-2 w-full sm:w-auto">
+            <button onclick="searchCustomPart('amazon')" class="flex-1 sm:flex-none px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5">
+              <i class="fa-brands fa-amazon"></i> Amazonで検索
+            </button>
+            <button onclick="searchCustomPart('monotaro')" class="flex-1 sm:flex-none px-4 py-2.5 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5">
+              <i class="fa-solid fa-store"></i> モノタロウで検索
+            </button>
+          </div>
+        </div>
+
+        <!-- Preset Category Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pt-2" id="presetPartsGrid">
+          <!-- JS Dynamic Grid for Preset Maintenance Categories -->
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 6: VEHICLE & APP SETTINGS -->
+    <section id="view-settings" class="tab-content hidden space-y-6">
+      
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Vehicle List & Management -->
+        <div class="glass-card p-5 rounded-2xl space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <h3 class="font-semibold text-slate-200 text-sm flex items-center gap-2">
+              <i class="fa-solid fa-car text-blue-400"></i> 車両の個別管理 (複数台対応)
+            </h3>
+            <button onclick="openVehicleModal()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow-md transition-all flex items-center gap-1">
+              <i class="fa-solid fa-plus"></i> 車両を追加
+            </button>
+          </div>
+
+          <div id="vehicleListContainer" class="space-y-3">
+            <!-- Dynamic Vehicle Cards -->
+          </div>
+        </div>
+
+        <!-- PWA Status & Demo Data Control -->
+        <div class="glass-card p-5 rounded-2xl space-y-4 flex flex-col justify-between">
+          <div>
+            <h3 class="font-semibold text-slate-200 text-sm flex items-center gap-2 border-b border-slate-800 pb-3">
+              <i class="fa-solid fa-database text-purple-400"></i> PWAステータス & データ管理
+            </h3>
+
+            <div class="mt-4 space-y-3">
+              <div class="p-3 bg-slate-900/90 rounded-xl border border-slate-800 text-xs space-y-2">
+                <div class="flex justify-between items-center">
+                  <span class="text-slate-400">Service Worker (Blob URL)</span>
+                  <span id="swStatusBadge" class="px-2 py-0.5 text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full">有効</span>
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-slate-400">Web Manifest PWA</span>
+                  <span class="px-2 py-0.5 text-[10px] bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-full">登録済み</span>
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-slate-400">ローカルストレージ使用量</span>
+                  <span id="storageUsage" class="text-slate-300 font-mono">0.0 KB</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="pt-4 border-t border-slate-800 space-y-2">
+            <button onclick="resetDemoData()" class="w-full py-2.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/30 font-medium text-xs rounded-xl transition-all flex items-center justify-center gap-2">
+              <i class="fa-solid fa-rotate-right"></i>
+              <span>初期デモデータに復元する</span>
+            </button>
+            <button onclick="clearAllData()" class="w-full py-2.5 bg-red-600/10 hover:bg-red-600/20 text-red-400 border border-red-500/20 font-medium text-xs rounded-xl transition-all flex items-center justify-center gap-2">
+              <i class="fa-solid fa-trash-can"></i>
+              <span>すべてのデータを全消去</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- MODAL: VEHICLE ADD/EDIT -->
+  <div id="vehicleModal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass-card max-w-md w-full rounded-2xl border border-slate-700 shadow-2xl p-6 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 id="vehicleModalTitle" class="text-base font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-car text-blue-400"></i> 車両情報の入力
+        </h3>
+        <button onclick="closeVehicleModal()" class="text-slate-400 hover:text-white p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <form id="vehicleForm" onsubmit="handleSaveVehicle(event)" class="space-y-4">
+        <input type="hidden" id="vehicleEditId">
+
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">車種・モデル名</label>
+          <input type="text" id="vehicleNameInput" placeholder="例: トヨタ プリウス" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:border-blue-500 focus:outline-none" required>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">車両型式 (型式指定/適合検索用)</label>
+          <input type="text" id="vehicleModelCodeInput" placeholder="例: DAA-ZVW50, JF3, DBA-GK3" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white uppercase focus:border-blue-500 focus:outline-none" required>
+          <p class="text-[10px] text-slate-500 mt-1">※ 車検証記載の「型式」を入力するとAmazon/モノタロウで適合パーツを一発検索できます。</p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">年式 (西暦)</label>
+            <input type="number" id="vehicleYearInput" placeholder="2020" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:border-blue-500 focus:outline-none" required>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">現在の走行距離 (km)</label>
+            <input type="number" id="vehicleOdoInput" placeholder="48500" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:border-blue-500 focus:outline-none" required>
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" onclick="closeVehicleModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-xl">キャンセル</button>
+          <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-blue-600/30">保存する</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: ADD / EDIT MAINTENANCE LOG -->
+  <div id="logModal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass-card max-w-lg w-full rounded-2xl border border-slate-700 shadow-2xl p-6 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 id="logModalTitle" class="text-base font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-pen-to-square text-blue-400"></i> 整備記録の入力
+        </h3>
+        <button onclick="closeLogModal()" class="text-slate-400 hover:text-white p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <form id="logForm" onsubmit="handleSaveLog(event)" class="space-y-4">
+        <input type="hidden" id="logEditId">
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">整備実施日</label>
+            <input type="date" id="logDate" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:border-blue-500 focus:outline-none" required>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">カテゴリ</label>
+            <select id="logCategory" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:border-blue-500 focus:outline-none" required>
+              <option value="オイル・液類">オイル・液類</option>
+              <option value="タイヤ・ホイール">タイヤ・ホイール</option>
+              <option value="ブレーキ関連">ブレーキ関連</option>
+              <option value="点検・車検">点検・車検</option>
+              <option value="消耗品・パーツ">消耗品・パーツ</option>
+              <option value="その他">その他</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">整備項目名 (例: エンジンオイル・エレメント交換)</label>
+          <input type="text" id="logTitle" placeholder="例: エンジンオイル交換" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:border-blue-500 focus:outline-none" required>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">整備時走行距離 (km)</label>
+            <input type="number" id="logOdo" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:border-blue-500 focus:outline-none" required>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">費用 (税込円)</label>
+            <input type="number" id="logCost" placeholder="0" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:border-blue-500 focus:outline-none" required>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">メモ・型番・使用パーツ</label>
+          <textarea id="logNote" rows="2" placeholder="Mobil1 0W-20 オイル4L使用" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:border-blue-500 focus:outline-none"></textarea>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" onclick="closeLogModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-xl">キャンセル</button>
+          <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-blue-600/30">保存する</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: ADD / EDIT REMINDER -->
+  <div id="reminderModal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass-card max-w-lg w-full rounded-2xl border border-slate-700 shadow-2xl p-6 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 id="reminderModalTitle" class="text-base font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-clock-rotate-left text-blue-400"></i> リマインド条件の設定
+        </h3>
+        <button onclick="closeReminderModal()" class="text-slate-400 hover:text-white p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <form id="reminderForm" onsubmit="handleSaveReminder(event)" class="space-y-4">
+        <input type="hidden" id="reminderEditId">
+
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">リマインド項目名</label>
+          <input type="text" id="reminderTitle" placeholder="例: エンジンオイル交換" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:border-blue-500 focus:outline-none" required>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">交換間隔: 走行距離 (km)</label>
+            <input type="number" id="reminderIntervalKm" placeholder="5000" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:border-blue-500 focus:outline-none" required>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">交換間隔: 期間 (ヶ月)</label>
+            <input type="number" id="reminderIntervalMonths" placeholder="6" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:border-blue-500 focus:outline-none" required>
+          </div>
+        </div>
+
+        <div class="p-3 bg-slate-900/80 rounded-xl border border-slate-800 space-y-3">
+          <p class="text-[11px] font-semibold text-blue-400"><i class="fa-solid fa-info-circle"></i> 前回の実施タイミング基準</p>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[10px] text-slate-400 mb-1">前回実施日</label>
+              <input type="date" id="reminderLastDate" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-xs text-white focus:border-blue-500 focus:outline-none">
+            </div>
+            <div>
+              <label class="block text-[10px] text-slate-400 mb-1">前回実施時距離 (km)</label>
+              <input type="number" id="reminderLastOdo" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-xs text-white focus:border-blue-500 focus:outline-none">
+            </div>
+          </div>
+          <p class="text-[10px] text-slate-500">* 空欄の場合は過去整備ログより同一タイトルの最新実施日・距離が採用されます。</p>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" onclick="closeReminderModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-xl">キャンセル</button>
+          <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-blue-600/30">設定を保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: QUICK ODOMETER UPDATE -->
+  <div id="odoModal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass-card max-w-sm w-full rounded-2xl border border-slate-700 shadow-2xl p-6 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-gauge text-blue-400"></i> 走行距離の更新
+        </h3>
+        <button onclick="closeOdoModal()" class="text-slate-400 hover:text-white p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <form onsubmit="handleQuickOdoUpdate(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">現在のオドメーター距離 (km)</label>
+          <input type="number" id="quickOdoInput" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-lg font-mono text-center font-bold text-blue-400 focus:border-blue-500 focus:outline-none" required>
+        </div>
+
+        <div class="flex justify-end gap-2">
+          <button type="button" onclick="closeOdoModal()" class="px-4 py-2 bg-slate-800 text-slate-300 text-xs rounded-xl">キャンセル</button>
+          <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-blue-600/30">更新実行</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Application Script Logic -->
+  <script>
+    const STORAGE_KEY = 'carnote_pwa_pro_v2';
+
+    // Application Global State
+    let appData = {
+      vehicles: [],
+      selectedVehicleId: '',
+      logs: [],
+      reminders: []
+    };
+
+    let categoryChartInstance = null;
+    let monthlyChartInstance = null;
+
+    // Preset Categories for Spare Parts Search Hub
+    const PRESET_PARTS = [
+      { name: 'エンジンオイル', keyword: 'エンジンオイル 0W-20', icon: 'fa-oil-can' },
+      { name: 'オイルフィルター', keyword: 'オイルエレメント フィルター', icon: 'fa-filter' },
+      { name: 'エアコンフィルター', keyword: 'エアコンフィルター クリーンエア', icon: 'fa-wind' },
+      { name: 'ワイパーゴム・ブレード', keyword: 'ワイパーブレード 撥水', icon: 'fa-box' },
+      { name: '補機バッテリー', keyword: 'バッテリー ハイブリッド', icon: 'fa-car-battery' },
+      { name: 'ブレーキパッド', keyword: 'ブレーキパッド フロント', icon: 'fa-compact-disc' },
+      { name: 'エアクリーナー', keyword: 'エアフィルター エアクリーナー', icon: 'fa-fan' },
+      { name: 'スパークプラグ', keyword: 'スパークプラグ イリジウム', icon: 'fa-bolt' },
+      { name: 'タイヤ 15/16インチ', keyword: 'タイヤ サマータイヤ 195/65R15', icon: 'fa-circle-notch' }
+    ];
+
+    // Initial Demo Sample Data
+    const DEFAULT_DATA = {
+      vehicles: [
+        { id: 'v-1', name: 'トヨタ プリウス', modelCode: 'DAA-ZVW50', year: 2020, odo: 48500 },
+        { id: 'v-2', name: 'ホンダ N-BOX', modelCode: '6DB-JF3', year: 2022, odo: 22000 }
+      ],
+      selectedVehicleId: 'v-1',
+      logs: [
+        { id: 'l-1', vehicleId: 'v-1', date: '2025-10-15', category: 'オイル・液類', title: 'エンジンオイル・エレメント交換', cost: 6500, odo: 45000, note: 'トヨタ純正 0W-20 フィルター交換込' },
+        { id: 'l-2', vehicleId: 'v-1', date: '2025-04-10', category: 'オイル・液類', title: 'エンジンオイル交換', cost: 4500, odo: 40000, note: '定期オイル交換' },
+        { id: 'l-3', vehicleId: 'v-1', date: '2024-11-01', category: '消耗品・パーツ', title: 'ワイパーゴム交換', cost: 2200, odo: 36000, note: 'フロント左右撥水ゴム' },
+        { id: 'l-4', vehicleId: 'v-1', date: '2024-06-20', category: '点検・車検', title: '2年定期点検・車検', cost: 88000, odo: 31000, note: 'ディーラー車検。ブレーキ液交換含む' },
+        { id: 'l-5', vehicleId: 'v-2', date: '2025-08-01', category: 'オイル・液類', title: 'エンジンオイル交換', cost: 3800, odo: 20000, note: 'N-BOXオイル交換' }
+      ],
+      reminders: [
+        { id: 'r-1', vehicleId: 'v-1', title: 'エンジンオイル交換', intervalKm: 5000, intervalMonths: 6, lastOdo: 45000, lastDate: '2025-10-15' },
+        { id: 'r-2', vehicleId: 'v-1', title: 'ワイパーゴム交換', intervalKm: 10000, intervalMonths: 12, lastOdo: 36000, lastDate: '2024-11-01' },
+        { id: 'r-3', vehicleId: 'v-2', title: 'エンジンオイル交換', intervalKm: 5000, intervalMonths: 6, lastOdo: 20000, lastDate: '2025-08-01' }
+      ]
+    };
+
+    // PWA Blob Manifest and Service Worker Dynamic Registration
+    function initPWA() {
+      try {
+        const manifest = {
+          name: "DriveCare PWA - 車両メンテナンスノート",
+          short_name: "DriveCare",
+          description: "複数台対応 車両整備ノート＆パーツ適合検索PWA",
+          start_url: ".",
+          display: "standalone",
+          background_color: "#0f172a",
+          theme_color: "#2563eb",
+          icons: [
+            { src: "https://placehold.co/192x192/2563eb/ffffff?text=DriveCare", sizes: "192x192", type: "image/png" }
+          ]
+        };
+        const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+        const link = document.createElement('link');
+        link.rel = 'manifest';
+        link.href = URL.createObjectURL(manifestBlob);
+        document.head.appendChild(link);
+
+        if ('serviceWorker' in navigator) {
+          const swCode = `
+            self.addEventListener('install', (e) => self.skipWaiting());
+            self.addEventListener('activate', (e) => self.clients.claim());
+            self.addEventListener('fetch', (e) => {
+              e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+            });
+          `;
+          const swBlob = new Blob([swCode], { type: 'text/javascript' });
+          navigator.serviceWorker.register(URL.createObjectURL(swBlob))
+            .then(() => {
+              const badge = document.getElementById('swStatusBadge');
+              if (badge) badge.textContent = 'Blob SW アクティブ';
+            }).catch(() => {});
+        }
+      } catch (e) {
+        console.warn('PWA initialization note:', e);
+      }
+    }
+
+    window.onload = function() {
+      initPWA();
+      loadData();
+      renderAll();
+    };
+
+    function loadData() {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (!stored) {
+        appData = JSON.parse(JSON.stringify(DEFAULT_DATA));
+        saveData();
+      } else {
+        try {
+          appData = JSON.parse(stored);
+          if (!appData.vehicles || appData.vehicles.length === 0) {
+            appData = JSON.parse(JSON.stringify(DEFAULT_DATA));
+            saveData();
+          }
+        } catch (e) {
+          appData = JSON.parse(JSON.stringify(DEFAULT_DATA));
+          saveData();
+        }
+      }
+    }
+
+    function saveData() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+      updateStorageUsage();
+    }
+
+    function updateStorageUsage() {
+      const bytes = (localStorage.getItem(STORAGE_KEY) || '').length;
+      const elem = document.getElementById('storageUsage');
+      if (elem) elem.textContent = (bytes / 1024).toFixed(1) + ' KB';
+    }
+
+    function getSelectedVehicle() {
+      return appData.vehicles.find(v => v.id === appData.selectedVehicleId) || appData.vehicles[0];
+    }
+
+    function switchActiveVehicle(vId) {
+      appData.selectedVehicleId = vId;
+      saveData();
+      renderAll();
+      showToast('表示車両を切り替えました');
+    }
+
+    function renderAll() {
+      renderVehicleSelector();
+      renderBannerInfo();
+      renderDashboard();
+      renderRecentDashLogs();
+      renderLogsTable();
+      renderRemindersGrid();
+      renderBacktestSection();
+      renderPartsHub();
+      renderVehicleSettingsList();
+      renderCharts();
+    }
+
+    function renderVehicleSelector() {
+      const select = document.getElementById('vehicleSelect');
+      if (!select) return;
+
+      select.innerHTML = '';
+      appData.vehicles.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.id;
+        opt.textContent = v.name;
+        if (v.id === appData.selectedVehicleId) opt.selected = true;
+        select.appendChild(opt);
+      });
+    }
+
+    function renderBannerInfo() {
+      const vehicle = getSelectedVehicle();
+      if (!vehicle) return;
+
+      document.getElementById('headerOdoDisplay').textContent = Number(vehicle.odo).toLocaleString();
+      document.getElementById('bannerCarTitle').textContent = vehicle.name;
+      document.getElementById('bannerCarModelCode').textContent = `型式: ${vehicle.modelCode || '未登録'}`;
+      document.getElementById('bannerCarYear').textContent = vehicle.year;
+
+      // Update EC Links
+      const amazonLink = document.getElementById('amazonSearchLink');
+      const monotaroLink = document.getElementById('monotaroSearchLink');
+
+      const searchQuery = encodeURIComponent(`${vehicle.modelCode || vehicle.name} 適合パーツ`);
+      amazonLink.href = `https://www.amazon.co.jp/s?k=${searchQuery}`;
+      monotaroLink.href = `https://www.monotaro.com/s/q-${searchQuery}/`;
+    }
+
+    function renderDashboard() {
+      const vehicle = getSelectedVehicle();
+      if (!vehicle) return;
+
+      const vehicleLogs = appData.logs.filter(l => l.vehicleId === vehicle.id);
+      const totalCost = vehicleLogs.reduce((sum, l) => sum + Number(l.cost || 0), 0);
+
+      document.getElementById('dashOdometer').innerHTML = `${Number(vehicle.odo).toLocaleString()} <span class="text-sm font-normal text-slate-400">km</span>`;
+      document.getElementById('dashTotalCost').textContent = `¥${totalCost.toLocaleString()}`;
+      document.getElementById('dashLogCount').textContent = vehicleLogs.length;
+
+      // Calculate annual estimate
+      let annual = totalCost;
+      if (vehicleLogs.length >= 2) {
+        const dates = vehicleLogs.map(l => new Date(l.date).getTime()).sort((a,b)=>a-b);
+        const months = Math.max(1, (dates[dates.length-1] - dates[0]) / (1000 * 60 * 60 * 24 * 30.43));
+        annual = Math.round((totalCost / months) * 12);
+      }
+      document.getElementById('dashAnnualCost').innerHTML = `¥${annual.toLocaleString()} <span class="text-xs text-slate-400 font-normal">/年</span>`;
+    }
+
+    function getReminderStatus(rem, vehicle) {
+      let lastOdo = rem.lastOdo;
+      let lastDate = rem.lastDate;
+
+      const matching = appData.logs
+        .filter(l => l.vehicleId === vehicle.id && (l.title.toLowerCase().includes(rem.title.toLowerCase()) || rem.title.toLowerCase().includes(l.title.toLowerCase())))
+        .sort((a,b) => new Date(b.date) - new Date(a.date));
+
+      if (matching.length > 0) {
+        lastOdo = matching[0].odo;
+        lastDate = matching[0].date;
+      }
+
+      const nextOdo = Number(lastOdo || 0) + Number(rem.intervalKm);
+      const remainingKm = nextOdo - Number(vehicle.odo);
+
+      const lastDateObj = new Date(lastDate || new Date());
+      const nextDateObj = new Date(lastDateObj);
+      nextDateObj.setMonth(nextDateObj.getMonth() + Number(rem.intervalMonths));
+
+      const today = new Date();
+      const remainingDays = Math.ceil((nextDateObj - today) / (1000 * 60 * 60 * 24));
+
+      const kmProgress = Math.min(100, Math.max(0, ((Number(vehicle.odo) - Number(lastOdo || 0)) / Number(rem.intervalKm)) * 100));
+
+      let status = 'ok';
+      if (remainingKm <= 0 || remainingDays <= 0) status = 'overdue';
+      else if (remainingKm <= 1000 || remainingDays <= 30) status = 'warning';
+
+      return { lastOdo, lastDate, remainingKm, remainingDays, kmProgress, status, nextDateStr: nextDateObj.toISOString().split('T')[0] };
+    }
+
+    function renderRemindersGrid() {
+      const container = document.getElementById('reminderCardsGrid');
+      const vehicle = getSelectedVehicle();
+      if (!container || !vehicle) return;
+
+      const vehicleReminders = appData.reminders.filter(r => r.vehicleId === vehicle.id);
+      container.innerHTML = '';
+
+      let alertCount = 0;
+      let urgentDetailText = '';
+
+      vehicleReminders.forEach(rem => {
+        const info = getReminderStatus(rem, vehicle);
+
+        if (info.status === 'overdue' || info.status === 'warning') {
+          alertCount++;
+          if (!urgentDetailText) {
+            urgentDetailText = `「${rem.title}」の交換推奨時期です (残り ${info.remainingKm}km / ${info.remainingDays}日)。`;
+          }
+        }
+
+        let badgeHtml = `<span class="px-2 py-0.5 text-[11px] font-bold rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"><i class="fa-solid fa-circle-check"></i> 良好</span>`;
+        let borderClass = 'border-slate-800';
+        let barColor = 'bg-blue-500';
+
+        if (info.status === 'overdue') {
+          badgeHtml = `<span class="px-2 py-0.5 text-[11px] font-bold rounded-full bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse"><i class="fa-solid fa-circle-exclamation"></i> 期限超過</span>`;
+          borderClass = 'border-red-500/40 bg-red-950/10';
+          barColor = 'bg-red-500';
+        } else if (info.status === 'warning') {
+          badgeHtml = `<span class="px-2 py-0.5 text-[11px] font-bold rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30"><i class="fa-solid fa-triangle-exclamation"></i> 間近</span>`;
+          borderClass = 'border-amber-500/40 bg-amber-950/10';
+          barColor = 'bg-amber-500';
+        }
+
+        const card = document.createElement('div');
+        card.className = `glass-card p-4 rounded-2xl border ${borderClass} flex flex-col justify-between space-y-4`;
+        card.innerHTML = `
+          <div>
+            <div class="flex items-start justify-between">
+              <h4 class="font-bold text-slate-100 text-sm flex items-center gap-2">
+                <i class="fa-solid fa-screwdriver-wrench text-blue-400"></i> ${escapeHtml(rem.title)}
+              </h4>
+              ${badgeHtml}
+            </div>
+
+            <div class="mt-3 space-y-2">
+              <div>
+                <div class="flex justify-between text-[11px] text-slate-400 mb-1">
+                  <span>インターバル: ${Number(rem.intervalKm).toLocaleString()} km / ${rem.intervalMonths}ヶ月</span>
+                  <span class="font-mono text-slate-200">${info.kmProgress.toFixed(0)}%</span>
+                </div>
+                <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                  <div class="${barColor} h-2 rounded-full transition-all duration-500" style="width: ${info.kmProgress}%"></div>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2 pt-2 text-xs">
+                <div class="bg-slate-900/80 p-2 rounded-xl border border-slate-800">
+                  <span class="text-[10px] text-slate-400 block">残り走行距離</span>
+                  <span class="font-bold font-mono ${info.remainingKm < 0 ? 'text-red-400' : 'text-slate-200'}">
+                    ${info.remainingKm > 0 ? info.remainingKm.toLocaleString() + ' km' : '超過 ' + Math.abs(info.remainingKm).toLocaleString() + ' km'}
+                  </span>
+                </div>
+                <div class="bg-slate-900/80 p-2 rounded-xl border border-slate-800">
+                  <span class="text-[10px] text-slate-400 block">残り推定日数</span>
+                  <span class="font-bold font-mono ${info.remainingDays < 0 ? 'text-red-400' : 'text-slate-200'}">
+                    ${info.remainingDays > 0 ? info.remainingDays + ' 日' : '超過 ' + Math.abs(info.remainingDays) + ' 日'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+            <span>前回: ${info.lastDate || '未記録'} (${Number(info.lastOdo || 0).toLocaleString()}km)</span>
+            <div class="flex items-center space-x-1">
+              <button onclick="openReminderModal('${rem.id}')" class="p-1.5 hover:text-blue-400 text-slate-400 transition-colors" title="編集">
+                <i class="fa-solid fa-pen"></i>
+              </button>
+              <button onclick="deleteReminder('${rem.id}')" class="p-1.5 hover:text-red-400 text-slate-400 transition-colors" title="削除">
+                <i class="fa-solid fa-trash"></i>
+              </button>
+            </div>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+
+      document.getElementById('dashAlertCount').textContent = `${alertCount} 件`;
+      const banner = document.getElementById('urgentReminderBanner');
+      const badge = document.getElementById('reminderAlertBadge');
+
+      if (alertCount > 0) {
+        if (banner) {
+          banner.classList.remove('hidden');
+          document.getElementById('urgentReminderDetail').textContent = urgentDetailText;
+        }
+        if (badge) {
+          badge.classList.remove('hidden');
+          badge.textContent = alertCount;
+        }
+      } else {
+        if (banner) banner.classList.add('hidden');
+        if (badge) badge.classList.add('hidden');
+      }
+    }
+
+    function renderLogsTable() {
+      const tbody = document.getElementById('fullLogsTableBody');
+      const emptyState = document.getElementById('logsEmptyState');
+      const vehicle = getSelectedVehicle();
+      if (!tbody || !vehicle) return;
+
+      const searchTerm = (document.getElementById('logSearchInput')?.value || '').toLowerCase();
+      const catFilter = document.getElementById('logCategoryFilter')?.value || 'ALL';
+
+      const filtered = appData.logs.filter(l => {
+        if (l.vehicleId !== vehicle.id) return false;
+        const matchSearch = l.title.toLowerCase().includes(searchTerm) || (l.note && l.note.toLowerCase().includes(searchTerm));
+        const matchCat = catFilter === 'ALL' || l.category === catFilter;
+        return matchSearch && matchCat;
+      }).sort((a, b) => new Date(b.date) - new Date(a.date));
+
+      tbody.innerHTML = '';
+
+      if (filtered.length === 0) {
+        emptyState.classList.remove('hidden');
+        return;
+      }
+      emptyState.classList.add('hidden');
+
+      filtered.forEach(log => {
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-slate-800/40 transition-colors";
+        tr.innerHTML = `
+          <td class="p-4 font-mono text-slate-300 whitespace-nowrap">${log.date}</td>
+          <td class="p-4">
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-800 border border-slate-700 text-blue-300">
+              ${escapeHtml(log.category || 'その他')}
+            </span>
+          </td>
+          <td class="p-4 font-bold text-slate-100">${escapeHtml(log.title)}</td>
+          <td class="p-4 font-mono text-slate-300">${Number(log.odo).toLocaleString()} km</td>
+          <td class="p-4 text-right font-mono font-bold text-emerald-400">¥${Number(log.cost).toLocaleString()}</td>
+          <td class="p-4 text-slate-400 max-w-xs truncate">${escapeHtml(log.note || '-')}</td>
+          <td class="p-4 text-center space-x-2">
+            <button onclick="openLogModal('${log.id}')" class="p-1.5 text-slate-400 hover:text-blue-400"><i class="fa-solid fa-pen"></i></button>
+            <button onclick="deleteLog('${log.id}')" class="p-1.5 text-slate-400 hover:text-red-400"><i class="fa-solid fa-trash"></i></button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderRecentDashLogs() {
+      const tbody = document.getElementById('dashRecentLogsTable');
+      const vehicle = getSelectedVehicle();
+      if (!tbody || !vehicle) return;
+
+      const recent = appData.logs
+        .filter(l => l.vehicleId === vehicle.id)
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .slice(0, 4);
+
+      tbody.innerHTML = '';
+      recent.forEach(log => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="p-3 font-mono text-slate-400 whitespace-nowrap">${log.date}</td>
+          <td class="p-3 font-medium text-slate-200">${escapeHtml(log.title)}</td>
+          <td class="p-3 font-mono">${Number(log.odo).toLocaleString()} km</td>
+          <td class="p-3 text-right font-mono font-semibold text-emerald-400">¥${Number(log.cost).toLocaleString()}</td>
+          <td class="p-3 text-center text-slate-500">${log.note ? '有' : '-'}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderBacktestSection() {
+      const missingContainer = document.getElementById('missingRemindersList');
+      const backtestTableBody = document.getElementById('backtestTableBody');
+      const missingBadge = document.getElementById('feedbackMissingBadge');
+      const missingCountBadge = document.getElementById('missingCountBadge');
+
+      const vehicle = getSelectedVehicle();
+      if (!missingContainer || !backtestTableBody || !vehicle) return;
+
+      const vehicleLogs = appData.logs.filter(l => l.vehicleId === vehicle.id);
+      const vehicleReminders = appData.reminders.filter(r => r.vehicleId === vehicle.id);
+
+      const reminderTitles = vehicleReminders.map(r => r.title.trim().toLowerCase());
+
+      const titleGroups = {};
+      vehicleLogs.forEach(l => {
+        const norm = l.title.trim();
+        if (!titleGroups[norm]) titleGroups[norm] = [];
+        titleGroups[norm].push(l);
+      });
+
+      const missingItems = [];
+      Object.keys(titleGroups).forEach(title => {
+        const isSet = reminderTitles.some(rt => rt.includes(title.toLowerCase()) || title.toLowerCase().includes(rt));
+        if (!isSet) {
+          const group = titleGroups[title].sort((a,b) => new Date(b.date) - new Date(a.date));
+          missingItems.push({
+            title: title,
+            category: group[0].category,
+            count: group.length,
+            lastOdo: group[0].odo,
+            lastDate: group[0].date
+          });
+        }
+      });
+
+      missingContainer.innerHTML = '';
+      if (missingItems.length === 0) {
+        missingContainer.innerHTML = `
+          <div class="col-span-2 p-4 text-center bg-slate-900/50 rounded-xl text-slate-400 text-xs border border-slate-800">
+            <i class="fa-solid fa-circle-check text-emerald-400 mr-1"></i> 整備実績の全主要項目にリマインドが設定されています。
+          </div>
+        `;
+        if (missingBadge) missingBadge.classList.add('hidden');
+        if (missingCountBadge) missingCountBadge.textContent = '0件検出';
+      } else {
+        if (missingBadge) missingBadge.classList.remove('hidden');
+        if (missingCountBadge) missingCountBadge.textContent = `${missingItems.length}件検出`;
+
+        missingItems.forEach(item => {
+          let recKm = 10000;
+          let recMonths = 12;
+          if (item.category === 'オイル・液類') { recKm = 5000; recMonths = 6; }
+          else if (item.category === 'タイヤ・ホイール') { recKm = 30000; recMonths = 36; }
+          else if (item.category === 'ブレーキ関連') { recKm = 20000; recMonths = 24; }
+
+          const div = document.createElement('div');
+          div.className = "bg-slate-900 p-3.5 rounded-xl border border-amber-500/30 flex items-center justify-between gap-3";
+          div.innerHTML = `
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-bold text-slate-100">${escapeHtml(item.title)}</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-amber-300 border border-slate-700">${item.count}回 記録</span>
+              </div>
+              <p class="text-[10px] text-slate-400 mt-1">推奨周期: ${recKm.toLocaleString()}km / ${recMonths}ヶ月</p>
+            </div>
+            <button onclick="autoAddMissingReminder('${escapeJsString(item.title)}', ${recKm}, ${recMonths}, '${item.lastDate}', ${item.lastOdo})" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition-all shrink-0 flex items-center gap-1 shadow-md">
+              <i class="fa-solid fa-plus"></i> リマインド追加
+            </button>
+          `;
+          missingContainer.appendChild(div);
+        });
+      }
+
+      // Backtest Table Body
+      backtestTableBody.innerHTML = '';
+      vehicleReminders.forEach(rem => {
+        const matched = vehicleLogs
+          .filter(l => l.title.toLowerCase().includes(rem.title.toLowerCase()) || rem.title.toLowerCase().includes(l.title.toLowerCase()))
+          .sort((a,b) => a.odo - b.odo);
+
+        let avgKmText = 'ログ分析中';
+        let evalHtml = `<span class="text-blue-400"><i class="fa-solid fa-info-circle"></i> 標準的な設定</span>`;
+        let recText = '現状の周期で問題ありません';
+
+        if (matched.length >= 2) {
+          let diffKm = 0;
+          for (let i = 1; i < matched.length; i++) {
+            diffKm += (matched[i].odo - matched[i-1].odo);
+          }
+          const avgKm = Math.round(diffKm / (matched.length - 1));
+          avgKmText = `${avgKm.toLocaleString()} km`;
+
+          const ratio = rem.intervalKm / avgKm;
+          if (ratio > 1.3) {
+            evalHtml = `<span class="text-amber-400 font-medium"><i class="fa-solid fa-triangle-exclamation"></i> やや交換頻度が低い可能性</span>`;
+            recText = `${avgKm.toLocaleString()}km 前後への短縮を検討`;
+          } else if (ratio < 0.7) {
+            evalHtml = `<span class="text-indigo-400 font-medium"><i class="fa-solid fa-shield-halved"></i> 高頻度ケア</span>`;
+            recText = `${avgKm.toLocaleString()}km への延長も可能`;
+          } else {
+            evalHtml = `<span class="text-emerald-400 font-medium"><i class="fa-solid fa-circle-check"></i> 過去実績とベストマッチ</span>`;
+            recText = '最適設定';
+          }
+        }
+
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-slate-800/40";
+        tr.innerHTML = `
+          <td class="p-3 font-bold text-slate-200">${escapeHtml(rem.title)}</td>
+          <td class="p-3 font-mono text-slate-300">${avgKmText}</td>
+          <td class="p-3 font-mono text-slate-300">${Number(rem.intervalKm).toLocaleString()} km / ${rem.intervalMonths}ヶ月</td>
+          <td class="p-3">${evalHtml}</td>
+          <td class="p-3 text-right font-medium text-slate-300">${recText}</td>
+        `;
+        backtestTableBody.appendChild(tr);
+      });
+    }
+
+    function autoAddMissingReminder(title, km, months, lastDate, lastOdo) {
+      const vehicle = getSelectedVehicle();
+      if (!vehicle) return;
+
+      const newRem = {
+        id: 'r-' + Date.now(),
+        vehicleId: vehicle.id,
+        title: title,
+        intervalKm: km,
+        intervalMonths: months,
+        lastOdo: lastOdo || vehicle.odo,
+        lastDate: lastDate || new Date().toISOString().split('T')[0]
+      };
+      appData.reminders.push(newRem);
+      saveData();
+      renderAll();
+      showToast(`「${title}」をリマインドに追加しました`);
+    }
+
+    function renderPartsHub() {
+      const vehicle = getSelectedVehicle();
+      const container = document.getElementById('presetPartsGrid');
+      const hubCode = document.getElementById('partsHubModelCode');
+      if (!container || !vehicle) return;
+
+      if (hubCode) hubCode.textContent = vehicle.modelCode || '未登録';
+
+      container.innerHTML = '';
+      PRESET_PARTS.forEach(part => {
+        const query = encodeURIComponent(`${vehicle.modelCode || vehicle.name} ${part.keyword}`);
+        const amazonUrl = `https://www.amazon.co.jp/s?k=${query}`;
+        const monotaroUrl = `https://www.monotaro.com/s/q-${query}/`;
+
+        const card = document.createElement('div');
+        card.className = "glass-card p-4 rounded-xl border border-slate-800 space-y-3 flex flex-col justify-between";
+        card.innerHTML = `
+          <div class="flex items-center space-x-3">
+            <div class="p-2.5 bg-blue-500/10 text-blue-400 rounded-lg">
+              <i class="fa-solid ${part.icon} text-lg"></i>
+            </div>
+            <div>
+              <h4 class="font-bold text-xs text-slate-100">${part.name}</h4>
+              <p class="text-[10px] text-slate-400">検索キー: ${part.keyword}</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80">
+            <a href="${amazonUrl}" target="_blank" rel="noopener noreferrer" class="px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg font-bold text-[11px] text-center transition-all flex items-center justify-center gap-1">
+              <i class="fa-brands fa-amazon"></i> Amazon
+            </a>
+            <a href="${monotaroUrl}" target="_blank" rel="noopener noreferrer" class="px-2.5 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/30 rounded-lg font-bold text-[11px] text-center transition-all flex items-center justify-center gap-1">
+              <i class="fa-solid fa-store"></i> モノタロウ
+            </a>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function searchCustomPart(platform) {
+      const vehicle = getSelectedVehicle();
+      const kw = document.getElementById('customPartKeyword').value.trim();
+      if (!kw) {
+        alert('パーツ名またはキーワードを入力してください');
+        return;
+      }
+
+      const query = encodeURIComponent(`${vehicle.modelCode || vehicle.name} ${kw}`);
+      let url = '';
+      if (platform === 'amazon') url = `https://www.amazon.co.jp/s?k=${query}`;
+      else url = `https://www.monotaro.com/s/q-${query}/`;
+
+      window.open(url, '_blank');
+    }
+
+    function renderVehicleSettingsList() {
+      const container = document.getElementById('vehicleListContainer');
+      if (!container) return;
+
+      container.innerHTML = '';
+      appData.vehicles.forEach(v => {
+        const isSelected = v.id === appData.selectedVehicleId;
+        const card = document.createElement('div');
+        card.className = `p-3.5 rounded-xl border ${isSelected ? 'border-blue-500 bg-blue-500/10' : 'border-slate-800 bg-slate-900'} flex items-center justify-between gap-3`;
+        card.innerHTML = `
+          <div>
+            <div class="flex items-center gap-2">
+              <h4 class="font-bold text-xs text-white">${escapeHtml(v.name)}</h4>
+              <span class="text-[10px] font-mono px-1.5 py-0.5 bg-slate-800 text-blue-300 rounded border border-slate-700">${escapeHtml(v.modelCode || '型式未登録')}</span>
+            </div>
+            <p class="text-[10px] text-slate-400 mt-0.5">${v.year}年式 | オドメーター: ${Number(v.odo).toLocaleString()} km</p>
+          </div>
+
+          <div class="flex items-center space-x-1">
+            <button onclick="openVehicleModal('${v.id}')" class="p-1.5 text-slate-400 hover:text-blue-400"><i class="fa-solid fa-pen text-xs"></i></button>
+            ${appData.vehicles.length > 1 ? `<button onclick="deleteVehicle('${v.id}')" class="p-1.5 text-slate-400 hover:text-red-400"><i class="fa-solid fa-trash text-xs"></i></button>` : ''}
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function renderCharts() {
+      const vehicle = getSelectedVehicle();
+      if (!vehicle) return;
+
+      const vehicleLogs = appData.logs.filter(l => l.vehicleId === vehicle.id);
+
+      // Doughnut Chart
+      const catTotals = {};
+      vehicleLogs.forEach(l => {
+        const c = l.category || 'その他';
+        catTotals[c] = (catTotals[c] || 0) + Number(l.cost || 0);
+      });
+
+      const ctxCat = document.getElementById('categoryChart')?.getContext('2d');
+      if (ctxCat) {
+        if (categoryChartInstance) categoryChartInstance.destroy();
+        categoryChartInstance = new Chart(ctxCat, {
+          type: 'doughnut',
+          data: {
+            labels: Object.keys(catTotals),
+            datasets: [{
+              data: Object.values(catTotals),
+              backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#64748b'],
+              borderWidth: 0
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 11 } } }
+            }
+          }
+        });
+      }
+
+      // Bar Chart
+      const ctxMonthly = document.getElementById('monthlyChart')?.getContext('2d');
+      if (ctxMonthly) {
+        const monthMap = {};
+        const now = new Date();
+        for (let i = 5; i >= 0; i--) {
+          const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          monthMap[key] = 0;
+        }
+
+        vehicleLogs.forEach(l => {
+          if (l.date) {
+            const key = l.date.substring(0, 7);
+            if (monthMap.hasOwnProperty(key)) {
+              monthMap[key] += Number(l.cost || 0);
+            }
+          }
+        });
+
+        if (monthlyChartInstance) monthlyChartInstance.destroy();
+        monthlyChartInstance = new Chart(ctxMonthly, {
+          type: 'bar',
+          data: {
+            labels: Object.keys(monthMap),
+            datasets: [{
+              label: '費用 (円)',
+              data: Object.values(monthMap),
+              backgroundColor: '#2563eb',
+              borderRadius: 6
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: { ticks: { color: '#94a3b8' }, grid: { display: false } },
+              y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            },
+            plugins: { legend: { display: false } }
+          }
+        });
+      }
+    }
+
+    function switchTab(tabName) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active', 'text-slate-200'));
+
+      const targetView = document.getElementById(`view-${tabName}`);
+      const targetBtn = document.getElementById(`tab-${tabName}`);
+
+      if (targetView) targetView.classList.remove('hidden');
+      if (targetBtn) targetBtn.classList.add('active');
+
+      if (tabName === 'dashboard') renderCharts();
+      else if (tabName === 'backtest') renderBacktestSection();
+      else if (tabName === 'parts') renderPartsHub();
+    }
+
+    // Vehicle Modal Controls
+    function openVehicleModal(id = null) {
+      document.getElementById('vehicleForm').reset();
+      document.getElementById('vehicleEditId').value = '';
+      document.getElementById('vehicleModalTitle').innerHTML = `<i class="fa-solid fa-car text-blue-400"></i> ${id ? '車両情報の編集' : '新しい車両を追加'}`;
+
+      if (id) {
+        const v = appData.vehicles.find(item => item.id === id);
+        if (v) {
+          document.getElementById('vehicleEditId').value = v.id;
+          document.getElementById('vehicleNameInput').value = v.name;
+          document.getElementById('vehicleModelCodeInput').value = v.modelCode || '';
+          document.getElementById('vehicleYearInput').value = v.year;
+          document.getElementById('vehicleOdoInput').value = v.odo;
+        }
+      }
+      document.getElementById('vehicleModal').classList.remove('hidden');
+    }
+
+    function closeVehicleModal() {
+      document.getElementById('vehicleModal').classList.add('hidden');
+    }
+
+    function handleSaveVehicle(e) {
+      e.preventDefault();
+      const id = document.getElementById('vehicleEditId').value;
+      const vehicleData = {
+        id: id || 'v-' + Date.now(),
+        name: document.getElementById('vehicleNameInput').value,
+        modelCode: document.getElementById('vehicleModelCodeInput').value.trim().toUpperCase(),
+        year: Number(document.getElementById('vehicleYearInput').value),
+        odo: Number(document.getElementById('vehicleOdoInput').value)
+      };
+
+      if (id) {
+        const idx = appData.vehicles.findIndex(v => v.id === id);
+        if (idx !== -1) appData.vehicles[idx] = vehicleData;
+      } else {
+        appData.vehicles.push(vehicleData);
+        appData.selectedVehicleId = vehicleData.id;
+      }
+
+      saveData();
+      closeVehicleModal();
+      renderAll();
+      showToast('車両情報を保存しました');
+    }
+
+    function deleteVehicle(id) {
+      if (appData.vehicles.length <= 1) {
+        alert('最低1台の車両データが必要です');
+        return;
+      }
+      if (confirm('この車両データおよび関連する整備ログを削除しますか？')) {
+        appData.vehicles = appData.vehicles.filter(v => v.id !== id);
+        appData.logs = appData.logs.filter(l => l.vehicleId !== id);
+        appData.reminders = appData.reminders.filter(r => r.vehicleId !== id);
+
+        if (appData.selectedVehicleId === id) {
+          appData.selectedVehicleId = appData.vehicles[0].id;
+        }
+
+        saveData();
+        renderAll();
+        showToast('車両データを削除しました');
+      }
+    }
+
+    // Log Modal Controls
+    function openLogModal(id = null) {
+      document.getElementById('logForm').reset();
+      document.getElementById('logEditId').value = '';
+      const vehicle = getSelectedVehicle();
+
+      if (id) {
+        const log = appData.logs.find(l => l.id === id);
+        if (log) {
+          document.getElementById('logEditId').value = log.id;
+          document.getElementById('logDate').value = log.date;
+          document.getElementById('logCategory').value = log.category || 'その他';
+          document.getElementById('logTitle').value = log.title;
+          document.getElementById('logOdo').value = log.odo;
+          document.getElementById('logCost').value = log.cost;
+          document.getElementById('logNote').value = log.note || '';
+        }
+      } else {
+        document.getElementById('logDate').value = new Date().toISOString().split('T')[0];
+        document.getElementById('logOdo').value = vehicle ? vehicle.odo : 0;
+      }
+
+      document.getElementById('logModal').classList.remove('hidden');
+    }
+
+    function closeLogModal() {
+      document.getElementById('logModal').classList.add('hidden');
+    }
+
+    function handleSaveLog(e) {
+      e.preventDefault();
+      const vehicle = getSelectedVehicle();
+      if (!vehicle) return;
+
+      const id = document.getElementById('logEditId').value;
+      const logData = {
+        id: id || 'l-' + Date.now(),
+        vehicleId: vehicle.id,
+        date: document.getElementById('logDate').value,
+        category: document.getElementById('logCategory').value,
+        title: document.getElementById('logTitle').value,
+        odo: Number(document.getElementById('logOdo').value),
+        cost: Number(document.getElementById('logCost').value),
+        note: document.getElementById('logNote').value
+      };
+
+      if (id) {
+        const idx = appData.logs.findIndex(l => l.id === id);
+        if (idx !== -1) appData.logs[idx] = logData;
+      } else {
+        appData.logs.unshift(logData);
+      }
+
+      if (logData.odo > vehicle.odo) {
+        vehicle.odo = logData.odo;
+      }
+
+      saveData();
+      closeLogModal();
+      renderAll();
+      showToast('整備記録を保存しました');
+    }
+
+    function deleteLog(id) {
+      if (confirm('この整備記録を削除しますか？')) {
+        appData.logs = appData.logs.filter(l => l.id !== id);
+        saveData();
+        renderAll();
+        showToast('整備記録を削除しました');
+      }
+    }
+
+    // Reminder Modal Controls
+    function openReminderModal(id = null) {
+      document.getElementById('reminderForm').reset();
+      document.getElementById('reminderEditId').value = '';
+
+      if (id) {
+        const rem = appData.reminders.find(r => r.id === id);
+        if (rem) {
+          document.getElementById('reminderEditId').value = rem.id;
+          document.getElementById('reminderTitle').value = rem.title;
+          document.getElementById('reminderIntervalKm').value = rem.intervalKm;
+          document.getElementById('reminderIntervalMonths').value = rem.intervalMonths;
+          document.getElementById('reminderLastDate').value = rem.lastDate || '';
+          document.getElementById('reminderLastOdo').value = rem.lastOdo || '';
+        }
+      }
+
+      document.getElementById('reminderModal').classList.remove('hidden');
+    }
+
+    function closeReminderModal() {
+      document.getElementById('reminderModal').classList.add('hidden');
+    }
+
+    function handleSaveReminder(e) {
+      e.preventDefault();
+      const vehicle = getSelectedVehicle();
+      if (!vehicle) return;
+
+      const id = document.getElementById('reminderEditId').value;
+      const remData = {
+        id: id || 'r-' + Date.now(),
+        vehicleId: vehicle.id,
+        title: document.getElementById('reminderTitle').value,
+        intervalKm: Number(document.getElementById('reminderIntervalKm').value),
+        intervalMonths: Number(document.getElementById('reminderIntervalMonths').value),
+        lastDate: document.getElementById('reminderLastDate').value,
+        lastOdo: document.getElementById('reminderLastOdo').value ? Number(document.getElementById('reminderLastOdo').value) : null
+      };
+
+      if (id) {
+        const idx = appData.reminders.findIndex(r => r.id === id);
+        if (idx !== -1) appData.reminders[idx] = remData;
+      } else {
+        appData.reminders.push(remData);
+      }
+
+      saveData();
+      closeReminderModal();
+      renderAll();
+      showToast('リマインド条件を保存しました');
+    }
+
+    function deleteReminder(id) {
+      if (confirm('このリマインド設定を削除しますか？')) {
+        appData.reminders = appData.reminders.filter(r => r.id !== id);
+        saveData();
+        renderAll();
+        showToast('リマインド設定を削除しました');
+      }
+    }
+
+    // Odometer Quick Modal
+    function openOdoModal() {
+      const vehicle = getSelectedVehicle();
+      if (!vehicle) return;
+      document.getElementById('quickOdoInput').value = vehicle.odo;
+      document.getElementById('odoModal').classList.remove('hidden');
+    }
+
+    function closeOdoModal() {
+      document.getElementById('odoModal').classList.add('hidden');
+    }
+
+    function handleQuickOdoUpdate(e) {
+      e.preventDefault();
+      const vehicle = getSelectedVehicle();
+      const val = Number(document.getElementById('quickOdoInput').value);
+      if (vehicle && val) {
+        vehicle.odo = val;
+        saveData();
+        closeOdoModal();
+        renderAll();
+        showToast('走行距離を更新しました');
+      }
+    }
+
+    function resetDemoData() {
+      if (confirm('すべての車両および整備記録を初期デモデータにリセットしますか？')) {
+        appData = JSON.parse(JSON.stringify(DEFAULT_DATA));
+        saveData();
+        renderAll();
+        showToast('初期デモデータにリセットしました');
+      }
+    }
+
+    function clearAllData() {
+      if (confirm('すべての車両・整備データを取り消し不可能な状態にし完全消去しますか？')) {
+        appData = {
+          vehicles: [{ id: 'v-1', name: 'マイカー1号', modelCode: '', year: new Date().getFullYear(), odo: 0 }],
+          selectedVehicleId: 'v-1',
+          logs: [],
+          reminders: []
+        };
+        saveData();
+        renderAll();
+        showToast('全データを完全消去しました');
+      }
+    }
+
+    function requestNotificationPermission() {
+      if (!('Notification' in window)) {
+        alert('お使いのブラウザは Notification API に対応していません。');
+        return;
+      }
+
+      Notification.requestPermission().then(permission => {
+        if (permission === 'granted') {
+          showToast('ブラウザ通知が許可されました！');
+          document.getElementById('notifyIcon').className = 'fa-solid fa-bell text-blue-400';
+          new Notification("DriveCare PWA", {
+            body: "ブラウザ通知が有効化されました。整備時期をお知らせします。",
+            icon: "https://placehold.co/192x192/2563eb/ffffff?text=DriveCare"
+          });
+        } else {
+          showToast('通知許可が拒否または保留されました');
+        }
+      });
+    }
+
+    function testNotificationModal() {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification("整備通知テスト", {
+          body: "【警告例】エンジンオイル交換推奨時期です (残り -500km)",
+          icon: "https://placehold.co/192x192/2563eb/ffffff?text=DriveCare"
+        });
+        showToast('テスト通知を送信しました');
+      } else {
+        alert('先にヘッダーのベルアイコンより通知許可を行ってください。');
+      }
+    }
+
+    function showToast(msg) {
+      const toast = document.createElement('div');
+      toast.className = 'fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-blue-600 text-white px-4 py-2.5 rounded-xl shadow-xl text-xs font-bold transition-all duration-300 opacity-0 transform translate-y-2';
+      toast.textContent = msg;
+      document.body.appendChild(toast);
+
+      setTimeout(() => toast.classList.remove('opacity-0', 'translate-y-2'), 10);
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 2200);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function escapeJsString(str) {
+      if (!str) return '';
+      return String(str).replace(/'/g, "\\'");
+    }
+  </script>
+</body>
+</html>
