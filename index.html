@@ -64,11 +64,11 @@
       <div class="flex items-center justify-between md:justify-start gap-4">
         <div class="flex items-center space-x-3">
           <div class="p-2.5 bg-gradient-to-tr from-blue-600 to-indigo-500 rounded-xl shadow-lg shadow-blue-500/20 text-white">
-            <i class="fa-solid fa-car-wrench text-xl"></i>
+            <i class="fa-solid fa-car-side text-xl"></i>
           </div>
           <div>
             <h1 class="text-lg font-bold text-white tracking-wide leading-none flex items-center gap-2">
-              DriveCare <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">PWA Pro</span>
+              DriveCare
             </h1>
             <p class="text-[11px] text-slate-400 mt-1">マルチ車両メンテ＆適合パーツ検索ノート</p>
           </div>
@@ -110,16 +110,6 @@
         <span class="text-slate-400 text-[11px]">(年式: <span id="bannerCarYear">2020</span>年)</span>
       </div>
 
-      <!-- Dynamic EC Part Search Links (Amazon & MonotaRO) -->
-      <div class="flex items-center gap-2 flex-wrap" id="partsSearchButtonsContainer">
-        <span class="text-slate-400 text-[11px]"><i class="fa-solid fa-magnifying-glass text-amber-400"></i> 適合パーツ一発検索:</span>
-        <a id="amazonSearchLink" href="#" target="_blank" rel="noopener noreferrer" class="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg font-medium text-[11px] transition-all flex items-center gap-1">
-          <i class="fa-brands fa-amazon"></i> Amazon適合品
-        </a>
-        <a id="monotaroSearchLink" href="#" target="_blank" rel="noopener noreferrer" class="px-2.5 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/30 rounded-lg font-medium text-[11px] transition-all flex items-center gap-1">
-          <i class="fa-solid fa-store"></i> モノタロウ適合品
-        </a>
-      </div>
     </div>
   </div>
 
@@ -879,14 +869,6 @@
       document.getElementById('bannerCarTitle').textContent = vehicle.name;
       document.getElementById('bannerCarModelCode').textContent = `型式: ${vehicle.modelCode || '未登録'}`;
       document.getElementById('bannerCarYear').textContent = vehicle.year;
-
-      // Update EC Links
-      const amazonLink = document.getElementById('amazonSearchLink');
-      const monotaroLink = document.getElementById('monotaroSearchLink');
-
-      const searchQuery = encodeURIComponent(`${vehicle.modelCode || vehicle.name} 適合パーツ`);
-      amazonLink.href = `https://www.amazon.co.jp/s?k=${searchQuery}`;
-      monotaroLink.href = `https://www.monotaro.com/s/q-${searchQuery}/`;
     }
 
     function renderDashboard() {
@@ -1032,6 +1014,8 @@
       });
 
       document.getElementById('dashAlertCount').textContent = `${alertCount} 件`;
+      const alertSub = document.getElementById('dashAlertSubtext');
+      if (alertSub) alertSub.textContent = alertCount > 0 ? '要確認' : '状態良好';
       const banner = document.getElementById('urgentReminderBanner');
       const badge = document.getElementById('reminderAlertBadge');
 
@@ -1743,5 +1727,189 @@
       return String(str).replace(/'/g, "\\'");
     }
   </script>
+<!-- ===== DriveCare 追加機能: スマホ最適化 + 自動バックアップ/復元 (</body>の直前に貼り付け) ===== -->
+<style id="dc-mobile-css">
+html{-webkit-text-size-adjust:100%}
+body{overflow-x:hidden;-webkit-tap-highlight-color:transparent}
+@media (max-width:767px){
+  input,select,textarea{font-size:16px!important}
+  button,a{touch-action:manipulation}
+  main{padding:.75rem!important;padding-bottom:calc(5.5rem + env(safe-area-inset-bottom))!important}
+  header{padding-top:max(.5rem,env(safe-area-inset-top))!important}
+  header{position:static!important}
+  header h1{font-size:1rem}
+  header p{display:none}
+  header>div>div:first-child{flex-wrap:wrap;gap:.5rem!important}
+  header>div>div:first-child>div:last-child{flex:1 1 100%}
+  #vehicleSelect{flex:1;min-width:0;font-size:16px}
+  header>div>div:last-child{width:100%;gap:.5rem}
+  header>div>div:last-child>button:first-child{flex:1;justify-content:center;padding:.6rem}
+  header>div>div:last-child>button,header>div>div:first-child button{min-height:40px;min-width:40px}
+  #dc-nav{position:fixed!important;left:0;right:0;bottom:0;z-index:40;border-radius:0!important;border-width:1px 0 0 0!important;
+    padding:.25rem .25rem calc(.25rem + env(safe-area-inset-bottom))!important;background:rgba(15,23,42,.97);backdrop-filter:blur(10px)}
+  #dc-nav{overflow-x:hidden!important}
+  #dc-nav .nav-tab{flex:1 1 0;min-width:0;max-width:none;flex-direction:column!important;gap:2px!important;padding:.4rem 0!important;font-size:8.5px!important;line-height:1.2;white-space:normal!important;word-break:normal;overflow-wrap:normal}
+  #dc-nav .nav-tab i{font-size:1.1rem}
+  #dc-nav .nav-tab span:not(.hidden):not([id]){display:block;overflow:hidden;max-height:2.3em}
+  #dc-nav .nav-tab [id$=Badge]{position:absolute;top:2px;right:6px}
+  .fixed.inset-0.z-50{align-items:flex-end!important;padding:0!important}
+  .fixed.inset-0.z-50>.glass-card{max-width:100%!important;max-height:92dvh;overflow-y:auto;border-radius:1.25rem 1.25rem 0 0!important;padding-bottom:calc(1.5rem + env(safe-area-inset-bottom))!important}
+  div[class*="bottom-20"]{bottom:calc(5rem + env(safe-area-inset-bottom))!important}
+  main table thead{display:none}
+  main table,main table tbody{display:block;width:100%}
+  main table tr{display:block;margin:.5rem 0;padding:.5rem .75rem;border:1px solid rgba(71,85,105,.5);border-radius:.75rem;background:rgba(15,23,42,.6)}
+  main table td{display:flex!important;justify-content:space-between;align-items:center;gap:.75rem;padding:.3rem 0!important;text-align:right!important;max-width:none!important;white-space:normal!important;overflow:visible!important;text-overflow:clip!important}
+  main table td::before{content:attr(data-l);flex:none;color:#94a3b8;font-size:10px;text-align:left}
+  main table td[data-l=""]::before,main table td:not([data-l])::before{content:none}
+}
+</style>
+<script id="dc-backup-js">
+(function(){
+'use strict';
+const DB='drivecare-backup',ST='h',KEY='dir',LATEST='drivecare-backup-latest.json';
+const FSA=typeof window.showDirectoryPicker==='function';
+let dir=null,timer=null,dirty=false,state='none',lastAt='',err='';
+const $=id=>document.getElementById(id);
+const toast=m=>{try{showToast(m)}catch(e){console.log(m)}};
+const getAutoDl=()=>localStorage.getItem('dcAutoDl')==='1';
+
+/* ---------- スマホ: ナビ固定 & テーブルのラベル付与 ---------- */
+(function mobile(){
+  const m=document.querySelector('meta[name=viewport]');
+  if(m)m.content='width=device-width, initial-scale=1, viewport-fit=cover';
+  const t=document.querySelector('.nav-tab');if(t&&t.parentElement)t.parentElement.id='dc-nav';
+  const label=()=>document.querySelectorAll('main table').forEach(tb=>{
+    const h=[...tb.querySelectorAll('thead th')].map(x=>x.textContent.trim());
+    tb.querySelectorAll('tbody tr').forEach(tr=>[...tr.children].forEach((td,i)=>{
+      if(td.dataset.l===undefined)td.dataset.l=h[i]||'';}));});
+  let q=0;new MutationObserver(()=>{cancelAnimationFrame(q);q=requestAnimationFrame(label)})
+    .observe(document.querySelector('main')||document.body,{childList:true,subtree:true});
+  label();
+  const sw=window.switchTab;if(typeof sw==='function')window.switchTab=function(n){sw.apply(this,arguments);window.scrollTo(0,0)};
+})();
+
+/* ---------- IndexedDB (フォルダハンドル保存) ---------- */
+const idb=()=>new Promise((res,rej)=>{const r=indexedDB.open(DB,1);r.onupgradeneeded=()=>r.result.createObjectStore(ST);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
+async function idbOp(mode,fn){const db=await idb();return new Promise((res,rej)=>{const tx=db.transaction(ST,mode);const q=fn(tx.objectStore(ST));tx.oncomplete=()=>res(q&&q.result);tx.onerror=()=>rej(tx.error)})}
+
+/* ---------- バックアップ ---------- */
+const snapshot=()=>JSON.stringify({app:'DriveCare',version:2,exportedAt:new Date().toISOString(),data:appData},null,1);
+const ymd=()=>{const d=new Date();return d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')};
+async function writeFile(name,text){const fh=await dir.getFileHandle(name,{create:true});const w=await fh.createWritable();await w.write(text);await w.close()}
+async function perm(ask){
+  if(!dir)return false;const o={mode:'readwrite'};
+  if(await dir.queryPermission(o)==='granted')return true;
+  if(ask&&await dir.requestPermission(o)==='granted')return true;
+  return false;
+}
+async function runBackup(ask){
+  if(!dir){return false}
+  try{
+    if(!await perm(ask)){state='needperm';ui();return false}
+    const s=snapshot();await writeFile(LATEST,s);await writeFile('drivecare-backup-'+ymd()+'.json',s);
+    dirty=false;state='ok';err='';lastAt=new Date().toLocaleString('ja-JP');ui();return true;
+  }catch(e){state='error';err=String(e&&e.message||e);ui();return false}
+}
+function schedule(){
+  dirty=true;ui();clearTimeout(timer);
+  timer=setTimeout(()=>{ if(dir)runBackup(false); else if(getAutoDl())download(true); },1500);
+}
+const _save=window.saveData;
+window.saveData=function(){const r=_save.apply(this,arguments);schedule();return r};
+
+async function pickDir(){
+  try{
+    const h=await window.showDirectoryPicker({mode:'readwrite'});
+    dir=h;try{await idbOp('readwrite',s=>s.put(h,KEY))}catch(e){}
+    toast('バックアップ先を設定しました');await runBackup(true);
+  }catch(e){if(e.name!=='AbortError'){state='error';err=String(e.message||e);ui()}}
+}
+async function clearDir(){dir=null;state='none';await idbOp('readwrite',s=>s.delete(KEY));ui();toast('バックアップ先を解除しました')}
+
+async function download(silent){
+  const s=snapshot(),name='drivecare-backup-'+ymd()+'.json';
+  const file=new File([s],name,{type:'application/json'});
+  if(!silent&&navigator.canShare&&navigator.canShare({files:[file]})){
+    try{await navigator.share({files:[file],title:'DriveCare バックアップ'});dirty=false;ui();return}catch(e){if(e.name==='AbortError')return}
+  }
+  const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=name;
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  dirty=false;lastAt=new Date().toLocaleString('ja-JP');ui();
+}
+
+/* ---------- 復元(インポート) ---------- */
+function validate(o){
+  const d=o&&o.data?o.data:o;
+  if(!d||!Array.isArray(d.vehicles)||!d.vehicles.length||!Array.isArray(d.logs)||!Array.isArray(d.reminders))throw new Error('DriveCareのバックアップ形式ではありません');
+  if(!d.vehicles.every(v=>v&&v.id&&v.name))throw new Error('車両データが不正です');
+  return{vehicles:d.vehicles,logs:d.logs,reminders:d.reminders,
+    selectedVehicleId:d.vehicles.some(v=>v.id===d.selectedVehicleId)?d.selectedVehicleId:d.vehicles[0].id};
+}
+function restore(text,srcName){
+  let n;try{n=validate(JSON.parse(text))}catch(e){alert('復元できません: '+e.message);return false}
+  if(!confirm(`「${srcName||'ファイル'}」から復元します。\n車両${n.vehicles.length}台 / 整備記録${n.logs.length}件 / リマインド${n.reminders.length}件\n\n現在のデータは置き換えられます(直前の状態は本端末内に1世代退避します)。よろしいですか？`))return false;
+  try{localStorage.setItem(STORAGE_KEY+'_prerestore',JSON.stringify(appData))}catch(e){}
+  appData=n;saveData();renderAll();toast('バックアップから復元しました');return true;
+}
+async function restoreFromFolder(){
+  try{
+    if(!await perm(true))return alert('フォルダへのアクセスが許可されていません');
+    const f=await(await dir.getFileHandle(LATEST)).getFile();restore(await f.text(),f.name);
+  }catch(e){alert('フォルダ内に '+LATEST+' が見つかりません')}
+}
+
+/* ---------- UI ---------- */
+function build(){
+  const host=$('view-settings');if(!host||$('dc-backup-card'))return;
+  const c=document.createElement('div');c.id='dc-backup-card';c.className='glass-card p-5 rounded-2xl space-y-3';
+  const b='w-full py-3 text-xs font-bold rounded-xl border transition-all flex items-center justify-center gap-2 ';
+  c.innerHTML=`
+  <h3 class="font-semibold text-slate-200 text-sm flex items-center gap-2 border-b border-slate-800 pb-3"><i class="fa-solid fa-cloud-arrow-up text-emerald-400"></i> バックアップ / 復元</h3>
+  <div id="dc-status" class="p-3 bg-slate-900/90 rounded-xl border border-slate-800 text-xs text-slate-300 space-y-1"></div>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+    <button id="dc-pick" class="${b}bg-emerald-600/20 text-emerald-300 border-emerald-500/30"><i class="fa-solid fa-folder-open"></i><span>バックアップフォルダを指定</span></button>
+    <button id="dc-now" class="${b}bg-blue-600/20 text-blue-300 border-blue-500/30"><i class="fa-solid fa-floppy-disk"></i><span>今すぐバックアップ</span></button>
+    <button id="dc-folder-restore" class="${b}bg-slate-800 text-slate-200 border-slate-700"><i class="fa-solid fa-folder-tree"></i><span>フォルダの最新から復元</span></button>
+    <button id="dc-clear" class="${b}bg-slate-800 text-slate-400 border-slate-700"><i class="fa-solid fa-link-slash"></i><span>フォルダ指定を解除</span></button>
+    <button id="dc-export" class="${b}bg-slate-800 text-slate-200 border-slate-700"><i class="fa-solid fa-file-export"></i><span>ファイルに書き出し / 共有</span></button>
+    <button id="dc-import" class="${b}bg-amber-600/20 text-amber-300 border-amber-500/30"><i class="fa-solid fa-file-import"></i><span>ファイルから復元(インポート)</span></button>
+  </div>
+  <label class="flex items-center gap-2 text-xs text-slate-300 pt-1"><input type="checkbox" id="dc-autodl" class="w-4 h-4"> <span>保存のたびに自動でファイルをダウンロード(フォルダ指定できない端末向け)</span></label>
+  <input type="file" id="dc-file" accept=".json,application/json" class="hidden">`;
+  host.appendChild(c);
+  $('dc-pick').onclick=()=>FSA?pickDir():alert('このブラウザはフォルダ指定に未対応です(iPhone/Android版Chromeなど)。\n「ファイルに書き出し/共有」または自動ダウンロードをご利用ください。');
+  $('dc-now').onclick=()=>dir?runBackup(true).then(ok=>ok&&toast('バックアップしました')):download();
+  $('dc-clear').onclick=()=>dir&&clearDir();
+  $('dc-folder-restore').onclick=()=>dir?restoreFromFolder():alert('先にバックアップフォルダを指定してください');
+  $('dc-export').onclick=()=>download();
+  $('dc-import').onclick=()=>$('dc-file').click();
+  $('dc-file').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(f)restore(await f.text(),f.name)};
+  $('dc-autodl').checked=getAutoDl();
+  $('dc-autodl').onchange=e=>localStorage.setItem('dcAutoDl',e.target.checked?'1':'0');
+  ui();
+}
+function ui(){
+  const s=$('dc-status');if(!s)return;
+  const L={none:FSA?'フォルダ未指定':'フォルダ指定は非対応ブラウザ(手動/自動ダウンロードを利用)',ok:'フォルダへ自動バックアップ中',
+    needperm:'フォルダへのアクセス許可が必要です',error:'エラー'};
+  const cls=state==='ok'?'text-emerald-400':state==='none'?'text-slate-400':'text-amber-400';
+  s.innerHTML=`<div>状態: <strong class="${cls}">${L[state]}</strong></div>`+
+    (lastAt?`<div class="text-slate-400">最終バックアップ: ${lastAt}</div>`:'')+
+    (dirty?'<div class="text-amber-400">未バックアップの変更があります</div>':'')+
+    (state==='needperm'?'<button id="dc-regrant" class="mt-1 px-3 py-2 bg-amber-500 text-slate-950 font-bold rounded-lg">許可してバックアップ</button>':'')+
+    (err?`<div class="text-red-400 break-all">${err.replace(/</g,'&lt;')}</div>`:'');
+  const r=$('dc-regrant');if(r)r.onclick=()=>runBackup(true);
+}
+async function init(){
+  build();
+  if(!FSA)return;
+  try{const h=await idbOp('readonly',s=>s.get(KEY));
+    if(h){dir=h;state=(await h.queryPermission({mode:'readwrite'}))==='granted'?'ok':'needperm';ui()}}catch(e){}
+}
+if(document.readyState==='complete')init();else window.addEventListener('load',()=>setTimeout(init,0));
+window.__dc={runBackup,restore,validate,snapshot,pickDir};
+})();
+</script>
+
 </body>
 </html>
